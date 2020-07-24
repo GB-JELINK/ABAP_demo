@@ -1,0 +1,422 @@
+*&---------------------------------------------------------------------*
+*& Report Z_ALV_FLIGHT_18
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT Z_ALV_FLIGHT_18.
+
+
+
+
+TABLES SFLIGHT.
+
+TYPES: BEGIN OF GTY_SFLIGHT.
+
+    INCLUDE TYPE SFLIGHT.
+TYPES: LIGHT TYPE C LENGTH 1.
+TYPES: COLOR TYPE C LENGTH 4.
+TYPES: IT_FIELDCOLORS TYPE LVC_T_SCOL.
+
+TYPES: END OF GTY_SFLIGHT.
+
+
+DATA GS_COLFIELD TYPE LINE OF LVC_T_SCOL.
+
+
+
+DATA: GS_SFLIGHT TYPE GTY_SFLIGHT,
+      GT_SFLIGHT TYPE TABLE OF GTY_SFLIGHT.
+
+
+DATA: OK_CODE TYPE SY-UCOMM.
+
+DATA: GO_CONT TYPE REF TO CL_GUI_CUSTOM_CONTAINER,
+      GO_ALV  TYPE REF TO CL_GUI_ALV_GRID.
+
+DATA: GS_VARIANT TYPE DISVARIANT,
+      GV_SAVE    TYPE C LENGTH 1.
+
+DATA: GS_LAYOUT TYPE LVC_S_LAYO.
+
+DATA: GT_FCAT TYPE LVC_T_FCAT,
+      GS_FCAT TYPE LVC_S_FCAT.
+
+
+TYPES: BEGIN OF GTY_BOOKING.
+    INCLUDE TYPE SBOOK.
+TYPES: COLOR TYPE C LENGTH 4,
+       END OF GTY_BOOKING.
+DATA: GT_BOOKINGS TYPE TABLE OF GTY_BOOKING,
+      GS_BOOKING  TYPE GTY_BOOKING.
+
+
+DATA: GO_DOCK TYPE REF TO CL_GUI_DOCKING_CONTAINER. "docking container
+
+
+
+"---------------class 선언---------------------
+CLASS LCL_EVENT_HANDLER DEFINITION.
+  PUBLIC SECTION.
+    METHODS: ON_DOUBLE_CLICK FOR EVENT DOUBLE_CLICK OF CL_GUI_ALV_GRID IMPORTING ES_ROW_NO E_COLUMN,
+      ON_TOOLBAR FOR EVENT TOOLBAR OF CL_GUI_ALV_GRID IMPORTING E_OBJECT,
+      ON_USER_COMMAND FOR EVENT USER_COMMAND OF CL_GUI_ALV_GRID IMPORTING E_UCOMM,
+      ON_BEFORE_USER_COMMAND FOR EVENT BEFORE_USER_COMMAND OF CL_GUI_ALV_GRID IMPORTING E_UCOMM.
+
+ENDCLASS.
+
+CLASS LCL_EVENT_HANDLER IMPLEMENTATION.
+  METHOD ON_BEFORE_USER_COMMAND.
+    PERFORM ON_BEFORE_USER_COMMAND USING E_UCOMM.
+
+
+  ENDMETHOD.
+
+
+
+  METHOD ON_USER_COMMAND.
+
+    DATA LV_TOTAL TYPE P LENGTH 3 DECIMALS 2.
+    DATA: LV_SEATSOCC TYPE I,
+          LV_SEATSMAX TYPE I.
+    DATA LT_ROID TYPE LVC_T_ROID.
+    DATA LS_ROID LIKE LINE OF LT_ROID.
+    DATA LT_COL TYPE LVC_T_COL.
+    DATA LS_COL LIKE LINE OF LT_COL.
+    DATA LV_TEXT TYPE STRING.
+
+
+    CASE E_UCOMM.
+
+      WHEN 'DISP'.
+        CALL METHOD GO_ALV->GET_CURRENT_CELL
+          IMPORTING
+            ES_COL_ID = LS_COL
+            ES_ROW_NO = LS_ROID.
+        LV_TEXT = '현재선택한 셀: ' && LS_ROID-ROW_ID.
+        CONCATENATE LV_TEXT LS_COL-FIELDNAME INTO LV_TEXT SEPARATED BY SPACE.
+        MESSAGE LV_TEXT TYPE 'I'.
+
+
+
+      WHEN 'PERCENTAGE'.
+        LOOP AT GT_SFLIGHT INTO GS_SFLIGHT.
+
+          LV_SEATSMAX = LV_SEATSMAX + GS_SFLIGHT-SEATSMAX + GS_SFLIGHT-SEATSMAX_B + GS_SFLIGHT-SEATSMAX_F.
+          LV_SEATSOCC = LV_SEATSOCC + GS_SFLIGHT-SEATSOCC + GS_SFLIGHT-SEATSOCC_B + GS_SFLIGHT-SEATSOCC_F.
+
+        ENDLOOP.
+
+        LV_TOTAL = LV_SEATSOCC / LV_SEATSMAX * 100.
+        MESSAGE 'Percentage: ' && LV_TOTAL TYPE 'I'.
+
+
+      WHEN 'PERCENTAGE_MARKED'.
+        CALL METHOD GO_ALV->GET_SELECTED_ROWS
+          IMPORTING
+            ET_ROW_NO = LT_ROID.
+
+
+        IF LINES( LT_ROID ) > 1.
+          LOOP AT LT_ROID INTO LS_ROID.
+            READ TABLE GT_SFLIGHT INTO GS_SFLIGHT INDEX LS_ROID-ROW_ID.
+
+            LV_SEATSMAX = LV_SEATSMAX + GS_SFLIGHT-SEATSMAX + GS_SFLIGHT-SEATSMAX_B + GS_SFLIGHT-SEATSMAX_F.
+            LV_SEATSOCC = LV_SEATSOCC + GS_SFLIGHT-SEATSOCC + GS_SFLIGHT-SEATSOCC_B + GS_SFLIGHT-SEATSOCC_F.
+
+
+          ENDLOOP.
+
+          LV_TOTAL = LV_SEATSOCC / LV_SEATSMAX * 100.
+          MESSAGE 'Percentage: ' && LV_TOTAL TYPE 'I'.
+
+
+        ELSE.
+          MESSAGE 'Choose ''ROW'' more than 2' TYPE 'I'.
+        ENDIF.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+
+  METHOD ON_TOOLBAR.
+    DATA LS_BUTTON TYPE STB_BUTTON.
+
+    LS_BUTTON-FUNCTION = 'PERCENTAGE'.
+    LS_BUTTON-BUTN_TYPE = '0'.
+    LS_BUTTON-QUICKINFO = 'Total economy utilization'.
+    LS_BUTTON-TEXT = '% total'.
+
+    INSERT LS_BUTTON INTO TABLE E_OBJECT->MT_TOOLBAR.
+    CLEAR LS_BUTTON.
+
+    LS_BUTTON-FUNCTION = 'PERCENTAGE_MARKED'.
+    LS_BUTTON-BUTN_TYPE = '0'.
+    LS_BUTTON-QUICKINFO = 'Economy utilization(marked flights)'.
+    LS_BUTTON-TEXT = '% marked'.
+
+    INSERT LS_BUTTON INTO TABLE E_OBJECT->MT_TOOLBAR.
+    CLEAR LS_BUTTON.
+
+  ENDMETHOD.
+
+
+
+  METHOD ON_DOUBLE_CLICK.
+
+    DATA LV_TEXT TYPE C LENGTH 20.
+    LV_TEXT = ES_ROW_NO-ROW_ID.
+
+*    MESSAGE LV_TEXT TYPE 'I'.
+
+
+    READ TABLE GT_SFLIGHT INTO GS_SFLIGHT INDEX ES_ROW_NO-ROW_ID.
+    DATA LV_TOTAL TYPE N.
+    LV_TOTAL = GS_SFLIGHT-SEATSOCC + GS_SFLIGHT-SEATSOCC_B + GS_SFLIGHT-SEATSOCC_F.
+
+    MESSAGE: '총 좌석 : ' && LV_TOTAL TYPE 'I'.
+*    MESSAGE LV_TOTAL TYPE 'N'.
+
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+DATA GO_HANDLER TYPE REF TO LCL_EVENT_HANDLER.
+
+
+
+
+
+
+"----------------------------------------------
+
+
+
+SELECT-OPTIONS:SO_CAR FOR SFLIGHT-CARRID,
+               SO_CON FOR SFLIGHT-CONNID.
+
+PARAMETERS PA_VARI TYPE DISVARIANT-VARIANT.
+
+
+
+START-OF-SELECTION.
+
+  PERFORM GET_DATA.
+*  PERFORM MAKE_DATA.
+
+
+  CALL SCREEN 100.
+
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE STATUS_0100 OUTPUT.
+  SET PF-STATUS '0100'.
+  SET TITLEBAR '0100'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Form GET_DATA
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM GET_DATA .
+
+  SELECT *
+    FROM SFLIGHT
+    INTO CORRESPONDING FIELDS OF TABLE GT_SFLIGHT
+    WHERE CARRID IN SO_CAR AND CONNID IN SO_CON.
+
+  LOOP AT GT_SFLIGHT INTO GS_SFLIGHT.
+
+    IF GS_SFLIGHT-FLDATE+4(2) = SY-DATUM+4(2).
+      GS_SFLIGHT-COLOR = 'C' && COL_TOTAL && '10'.
+    ENDIF.
+
+    IF GS_SFLIGHT-PLANETYPE = '747-400'.
+      GS_COLFIELD-FNAME = 'PLANETYPE'.
+      GS_COLFIELD-COLOR-COL = COL_POSITIVE.
+      GS_COLFIELD-COLOR-INT = '1'.
+      GS_COLFIELD-COLOR-INV = '0'.
+
+      APPEND GS_COLFIELD TO GS_SFLIGHT-IT_FIELDCOLORS.
+    ENDIF.
+
+
+    IF GS_SFLIGHT-SEATSOCC = 0.
+      GS_SFLIGHT-LIGHT = 1.
+    ELSEIF GS_SFLIGHT-SEATSOCC < 50.
+      GS_SFLIGHT-LIGHT = 2.
+    ELSE.
+      GS_SFLIGHT-LIGHT = 3.
+    ENDIF.
+
+    MODIFY GT_SFLIGHT FROM GS_SFLIGHT.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Module  EXIT  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE EXIT INPUT.
+  CASE OK_CODE.
+    WHEN 'BACK'.
+      LEAVE TO SCREEN 0.
+    WHEN 'EXIT' OR 'CANC'.
+      LEAVE PROGRAM.
+  ENDCASE.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Module CREATE_ALV OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE CREATE_ALV OUTPUT.
+  IF GO_CONT IS INITIAL.
+
+
+*    CREATE OBJECT GO_CONT
+*      EXPORTING
+*        CONTAINER_NAME = 'CC_100'.
+
+    "docking container------------------------
+    CREATE OBJECT GO_DOCK
+      EXPORTING
+        REPID     = SY-REPID
+        DYNNR     = SY-DYNNR
+        EXTENSION = CL_GUI_DOCKING_CONTAINER=>WS_MAXIMIZEBOX.
+
+    "docking container------------------------
+
+
+    CREATE OBJECT GO_ALV
+      EXPORTING
+*       I_PARENT = GO_CONT.
+        I_PARENT = GO_DOCK.
+
+
+
+
+    GS_VARIANT-REPORT = SY-CPROG.
+    GS_VARIANT-VARIANT = PA_VARI.
+    GV_SAVE = 'A'.
+
+    GS_LAYOUT-SEL_MODE = 'A'.
+    GS_LAYOUT-EXCP_FNAME = 'LIGHT'.
+    GS_LAYOUT-EXCP_LED = 'X'.
+    GS_LAYOUT-CWIDTH_OPT = 'X'.
+
+    GS_LAYOUT-INFO_FNAME = 'COLOR'.
+    GS_LAYOUT-CTAB_FNAME = 'IT_FIELDCOLORS'.
+
+    PERFORM SET_FIELDCAT.
+
+
+    "-------- display 전
+    CREATE OBJECT GO_HANDLER.
+    SET HANDLER GO_HANDLER->ON_DOUBLE_CLICK FOR GO_ALV.
+
+    SET HANDLER GO_HANDLER->ON_TOOLBAR FOR GO_ALV.
+
+    SET HANDLER GO_HANDLER->ON_USER_COMMAND FOR GO_ALV.
+
+    SET HANDLER GO_HANDLER->ON_BEFORE_USER_COMMAND FOR GO_ALV.
+
+    CALL METHOD GO_ALV->SET_TABLE_FOR_FIRST_DISPLAY
+      EXPORTING
+        I_STRUCTURE_NAME = 'SFLIGHT'
+        IS_VARIANT       = GS_VARIANT
+        I_SAVE           = GV_SAVE
+        IS_LAYOUT        = GS_LAYOUT
+*       I_DEFAULT        = 'X'
+*       IT_TOOLBAR_EXCLUDING          =
+*       IT_HYPERLINK     =
+*       IT_ALV_GRAPHICS  =
+*       IT_EXCEPT_QINFO  =
+*       IR_SALV_ADAPTER  =
+      CHANGING
+        IT_OUTTAB        = GT_SFLIGHT
+        IT_FIELDCATALOG  = GT_FCAT      "필드명
+*       IT_SORT          =
+*       IT_FILTER        =
+*  EXCEPTIONS
+*       INVALID_PARAMETER_COMBINATION = 1
+*       PROGRAM_ERROR    = 2
+*       TOO_MANY_LINES   = 3
+*       OTHERS           = 4
+      .
+  ELSE.
+
+  ENDIF.
+
+ENDMODULE.
+
+FORM SET_FIELDCAT.
+
+  GS_FCAT-FIELDNAME = 'LIGHT'.  "변경대상 필드명
+  GS_FCAT-COLTEXT = 'Utilizaiton'.   "필드명
+
+  APPEND GS_FCAT TO GT_FCAT.
+  CLEAR GS_FCAT.
+
+  GS_FCAT-FIELDNAME = 'CARRID'.
+  GS_FCAT-REF_FIELD = 'CARRID'. "dic내의 필드
+  GS_FCAT-REF_TABLE = 'SFLIGHT'.
+  APPEND GS_FCAT TO GT_FCAT.
+  CLEAR GS_FCAT.
+
+
+  GS_FCAT-FIELDNAME = 'PAYMENTSUM'.
+  GS_FCAT-NO_OUT = 'X'.
+  APPEND GS_FCAT TO GT_FCAT.
+  CLEAR GS_FCAT.
+
+  GS_FCAT-FIELDNAME = 'SEATSOCC'.
+  GS_FCAT-DO_SUM = 'X'.
+  APPEND GS_FCAT TO GT_FCAT.
+  CLEAR GS_FCAT.
+
+ENDFORM.
+
+FORM ON_BEFORE_USER_COMMAND USING P_UCOMM.
+
+
+
+  CASE P_UCOMM.
+    WHEN CL_GUI_ALV_GRID=>MC_FC_DETAIL.
+      CALL METHOD GO_ALV->SET_USER_COMMAND
+        EXPORTING
+          I_UCOMM = 'DISP'.
+  ENDCASE.
+
+ENDFORM.
+
+*FORM MAKE_DATA .
+*
+*
+*  TMON = SY-DATUM.
+*
+*  LOOP AT GT_SFLIGHT INTO GS_SFLIGHT.
+*
+*    IF GS_SFLIGHT-FLDATE+4(2) = TMON+4(2).
+*      GS_COLFIELD-FNAME = 'FLDATE'.
+*      GS_COLFIELD-COLOR-COL = COL_POSITIVE.
+*      GS_COLFIELD-COLOR-INT = '1'.
+*      GS_COLFIELD-COLOR-INT ='0'.
+*
+*      APPEND GS_COLFIELD TO GS_SFLIGHT-IT_COLFIELDS.
+*    ENDIF.
+*
+*    MODIFY GT_SFLIGHT FROM GS_SFLIGHT TRANSPORTING COLOR IT_COLFIELDS."transporting ____ 해당 필드만 modify
+**    MODIFY gt_scarr FROM gs_scarr
+**    TRANSPORTING color
+**    WHERE currcode = 'USD'.
+*
+*  ENDLOOP.
+*ENDFORM.
